@@ -1,5 +1,4 @@
 <meta charset="utf-8"><title>끝말잇기 에디터</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700&display=swap">
 <style>
@@ -438,7 +437,7 @@ def('var DLX_CFG={p:{n},boss:{n},cost1:{n},cost2:{n},syn:{n},pity:{n}};', [
   F('dlx.syn', '합성에 드는 같은 등급 카드 수', 'grow', SC, { min: 2, max: 10 }),
   F('dlx.pity', '합성 천장 (이 번째 도전은 무조건 성공)', 'grow', SC, { min: 1, max: 1000 })
 ]);
-def('var DLX_TIER=[{n},{n},{n}];', [0, 1, 2].map(i => F('dlxtier.' + i, (i + 1) + '티어 배율 (변신·동료 수치·스킬 세기)', 'grow', SC + ' 티어·스킬', { min: 0.1, max: 10, step: 0.05 })));
+def('var DLX_TIER=[{n},{n},{n}];', [0, 1, 2].map(i => F('dlxtier.' + i, (i + 1) + '티어 (%) — 변신·동료 수치·스킬 세기', 'grow', SC + ' 티어·스킬', { min: 0.1, max: 10, step: 5, scale: 100, unit: '%', hint: '100% = 그대로, 130% = 1.3배' })));
 dArr('DLX_SKG', 6, i => DGN[i] + ' 카드 스킬 세기 배율', SC + ' 티어·스킬', { max: 100, step: 0.05 });
 dArr('DLX_SKC', 6, i => DGN[i] + ' 카드 스킬 발동 확률 배율', SC + ' 티어·스킬', { max: 100, step: 0.05 });
 def('var DLX_SYNX={max:{n},swap:{n}};', [F('dlxsx.max', '합성 한 번에 최대 몇 번 도전', 'grow', SC + ' 합성', { min: 1, max: 10 }), F('dlxsx.swap', '합성 결과 카드 교체 횟수', 'grow', SC + ' 합성', { min: 0, max: 20 })]);
@@ -448,6 +447,7 @@ def('stat:[0,{n},{n},{n},{n},{n}]', [1, 2, 3, 4, 5].map(i => F('dlxaw.' + i, '�
 dArr('DLX_GW1', 3, i => '일반 뽑기: ' + DGN[i] + ' 비중', SC + ' 뽑기 확률');
 dArr('DLX_GW2', 4, i => '고급 뽑기: ' + DGN[i] + ' 비중', SC + ' 뽑기 확률');
 dArr('DLX_SYN', 5, i => '합성 ' + DGN[i] + ' → ' + DGN[i + 1] + ' 성공 %', SC + ' 합성', { max: 100 });
+def('var DLX_TFP={n};', [F('dlxtfp', '변신 능력치 전체 +% (변신 공격력·체력 모두)', 'grow', SC + ' 변신·동료 능력치', { min: 0, max: 100000, step: 10, unit: '%', hint: '0 = 지금 그대로, 100 = 2배, 50 = 1.5배. 모든 등급·티어·각성에 한꺼번에 곱해져요 (전직 % 올리기와 같은 방식)' })]);
 dArr('DLX_TF_R', 6, i => DGN[i] + ' 변신: 공격력 +%', SC + ' 변신·동료 능력치');
 dArr('DLX_TF_Q', 6, i => DGN[i] + ' 변신: 체력 +%', SC + ' 변신·동료 능력치');
 dArr('DLX_CP', 6, i => DGN[i] + ' 동료: 내 데미지의 몇 %로 한 번 더', SC + ' 변신·동료 능력치');
@@ -948,15 +948,36 @@ function buildText(forPreview) {
   const i = t.lastIndexOf('</body>');
   return i < 0 ? t + inj : t.slice(0, i) + inj + t.slice(i);
 }
+function dlDialog(name, blob, okMsg) {
+  return new Promise(res => {
+    const url = URL.createObjectURL(blob);
+    const mb = (blob.size / 1048576).toFixed(1) + 'MB';
+    const close = () => { try { URL.revokeObjectURL(url); } catch (e) { } ov.remove(); res(); };
+    const a = h('a', { href: url, download: name, style: 'display:block;text-align:center;background:var(--accent,#ff6b4a);color:#fff;font-weight:800;font-size:1.05rem;padding:14px;border-radius:12px;text-decoration:none;margin:12px 0 8px' }, '⬇ ' + name + ' 저장하기 (' + mb + ')');
+    a.addEventListener('click', () => { toast((okMsg || '저장했어요') + ' — 알림창/다운로드 폴더를 확인하세요', 5000); });
+    const kids = [
+      h('div', { style: 'font-weight:800;font-size:1.05rem;margin-bottom:6px' }, '파일 준비 끝!'),
+      h('div', { class: 'hint' }, '아래 버튼을 한 번 눌러야 폰에 저장돼요. (크롬은 버튼을 직접 눌러야 큰 파일을 받게 해줘요)'),
+      a
+    ];
+    let f = null; try { f = new File([blob], name, { type: blob.type }); } catch (e) { }
+    if (f && navigator.canShare && navigator.canShare({ files: [f] })) {
+      kids.push(h('button', { style: 'width:100%;padding:12px;border-radius:12px;font-weight:700;margin-bottom:8px', onclick: async () => { try { await navigator.share({ files: [f] }); toast('공유창에서 \'파일에 저장\'을 고르세요', 4000); } catch (e) { } } }, '공유로 저장 (다운로드가 안 될 때)'));
+    }
+    kids.push(h('div', { class: 'hint', style: 'margin-bottom:8px' }, '같은 이름 파일이 있으면 "index (1).html"처럼 번호가 붙어 저장돼요.'));
+    kids.push(h('button', { style: 'width:100%;padding:10px;border-radius:12px', onclick: close }, '닫기'));
+    const box = h('div', { style: 'background:var(--panel,#1b1b2b);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:18px;width:min(92vw,420px)' }, kids);
+    const ov = h('div', { class: 'loading', style: 'z-index:100;background:rgba(0,0,0,.65)' }, box);
+    document.body.append(ov);
+  });
+}
 async function saveFile(name, data, okMsg) {
-  let dl = null; try { dl = await claude.use('downloads'); } catch (e) { }
+  let dl = null;   /* GitHub 등 일반 웹에서는 항상 다운로드 창 방식 */
   if (!dl) {
     try {
       const mime = /\.html?$/i.test(name) ? 'text/html' : /\.json$/i.test(name) ? 'application/json' : /\.js$/i.test(name) ? 'text/javascript' : 'application/octet-stream';
       const blob = data instanceof Blob ? data : new Blob([data], { type: mime });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.style.display = 'none'; document.body.append(a); a.click();
-      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 8000);
-      toast((okMsg || '저장했어요') + ' (다운로드 폴더 확인)', 4500);
+      await dlDialog(name, blob, okMsg);
     } catch (e) { toast('저장하지 못했어요 (' + ((e && (e.code || e.message)) || '알 수 없음') + ')', 4000); }
     return;
   }
